@@ -80,6 +80,8 @@ type KeyConfig struct {
 	// a TPM-generated signature of the minted key.
 	// It may contain any data chosen by the caller.
 	QualifyingData []byte
+	// Password to protect key
+	Password string
 }
 
 // defaultConfig is used when no other configuration is specified.

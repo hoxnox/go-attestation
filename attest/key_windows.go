@@ -210,5 +210,5 @@ func (k *windowsKey20) certify(tb tpmBase, handle interface{}, _ CertifyOpts) (*
 		Alg:  tpm2.AlgRSASSA,
 		Hash: tpm2.AlgSHA1, // PCP-created AK uses SHA1
 	}
-	return certify(tpm, hnd, akHnd, nil, scheme)
+	return certify(tpm, hnd, akHnd, nil, scheme, "")
 }

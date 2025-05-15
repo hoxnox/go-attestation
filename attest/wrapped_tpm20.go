@@ -317,7 +317,7 @@ func (t *wrappedTPM20) newKeyCertifiedByKey(ck certifyingKey, opts *KeyConfig) (
 	}()
 
 	// Certify application key by AK
-	certifyOpts := CertifyOpts{QualifyingData: opts.QualifyingData}
+	certifyOpts := CertifyOpts{QualifyingData: opts.QualifyingData, ObjAuth: opts.Password}
 	cp, err := certifyByKey(t, keyHandle, ck, certifyOpts)
 	if err != nil {
 		return nil, fmt.Errorf("certifyByKey() failed: %v", err)
@@ -335,7 +335,7 @@ func (t *wrappedTPM20) newKeyCertifiedByKey(ck certifyingKey, opts *KeyConfig) (
 	if err != nil {
 		return nil, fmt.Errorf("access public key: %v", err)
 	}
-	return &Key{key: newWrappedKey20(keyHandle, blob, pub, creationData, cp.CreateAttestation, cp.CreateSignature), pub: pubKey, tpm: t}, nil
+	return &Key{key: newWrappedKey20(keyHandle, blob, pub, creationData, cp.CreateAttestation, cp.CreateSignature, opts.Password), pub: pubKey, tpm: t}, nil
 }
 
 func createKey(t *wrappedTPM20, opts *KeyConfig) (tpmutil.Handle, []byte, []byte, []byte, error) {
@@ -355,12 +355,12 @@ func createKey(t *wrappedTPM20, opts *KeyConfig) (tpmutil.Handle, []byte, []byte
 		return 0, nil, nil, nil, fmt.Errorf("incorrect key options: %v", err)
 	}
 
-	blob, pub, creationData, _, _, err := tpm2.CreateKey(t.rwc, srk, tpm2.PCRSelection{}, "", "", tmpl)
+	blob, pub, creationData, _, _, err := tpm2.CreateKey(t.rwc, srk, tpm2.PCRSelection{}, "", opts.Password, tmpl)
 	if err != nil {
 		return 0, nil, nil, nil, fmt.Errorf("CreateKey() failed: %v", err)
 	}
-
 	return srk, blob, pub, creationData, err
+
 }
 
 func templateFromConfig(opts *KeyConfig) (tpm2.Public, error) {
@@ -459,7 +459,7 @@ func (t *wrappedTPM20) loadKeyWithParent(opaqueBlob []byte, parent ParentKeyConf
 	if err != nil {
 		return nil, fmt.Errorf("access public key: %v", err)
 	}
-	return &Key{key: newWrappedKey20(hnd, sKey.Blob, sKey.Public, sKey.CreateData, sKey.CreateAttestation, sKey.CreateSignature), pub: pub, tpm: t}, nil
+	return &Key{key: newWrappedKey20(hnd, sKey.Blob, sKey.Public, sKey.CreateData, sKey.CreateAttestation, sKey.CreateSignature, ""), pub: pub, tpm: t}, nil
 }
 
 func (t *wrappedTPM20) pcrbanks() ([]HashAlg, error) {
@@ -497,6 +497,7 @@ type wrappedKey20 struct {
 	createData        []byte
 	createAttestation []byte
 	createSignature   []byte
+	password          string
 }
 
 func newWrappedAK20(hnd tpmutil.Handle, blob, public, createData, createAttestation, createSig []byte) ak {
@@ -510,7 +511,7 @@ func newWrappedAK20(hnd tpmutil.Handle, blob, public, createData, createAttestat
 	}
 }
 
-func newWrappedKey20(hnd tpmutil.Handle, blob, public, createData, createAttestation, createSig []byte) key {
+func newWrappedKey20(hnd tpmutil.Handle, blob, public, createData, createAttestation, createSig []byte, password string) key {
 	return &wrappedKey20{
 		hnd:               hnd,
 		blob:              blob,
@@ -518,6 +519,7 @@ func newWrappedKey20(hnd tpmutil.Handle, blob, public, createData, createAttesta
 		createData:        createData,
 		createAttestation: createAttestation,
 		createSignature:   createSig,
+		password:          password,
 	}
 }
 
@@ -628,7 +630,7 @@ func certifyByKey(tb tpmBase, handle interface{}, ck certifyingKey, opts Certify
 	if err != nil {
 		return nil, fmt.Errorf("get signature scheme: %v", err)
 	}
-	return certify(t.rwc, hnd, ck.handle, opts.QualifyingData, scheme)
+	return certify(t.rwc, hnd, ck.handle, opts.QualifyingData, scheme, opts.ObjAuth)
 }
 
 func (k *wrappedKey20) quote(tb tpmBase, nonce []byte, alg HashAlg, selectedPCRs []int) (*Quote, error) {
@@ -665,7 +667,7 @@ func (k *wrappedKey20) sign(tb tpmBase, digest []byte, pub crypto.PublicKey, opt
 	case *ecdsa.PublicKey:
 		return signECDSA(t.rwc, k.hnd, digest, p.Curve)
 	case *rsa.PublicKey:
-		return signRSA(t.rwc, k.hnd, digest, opts)
+		return signRSA(t.rwc, k.hnd, digest, opts, k.password)
 	}
 	return nil, fmt.Errorf("unsupported signing key type: %T", pub)
 }
@@ -699,7 +701,7 @@ func signECDSA(rw io.ReadWriter, key tpmutil.Handle, digest []byte, curve ellipt
 	}{sig.ECC.R, sig.ECC.S})
 }
 
-func signRSA(rw io.ReadWriter, key tpmutil.Handle, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
+func signRSA(rw io.ReadWriter, key tpmutil.Handle, digest []byte, opts crypto.SignerOpts, password string) ([]byte, error) {
 	h, err := tpm2.HashToAlgorithm(opts.HashFunc())
 	if err != nil {
 		return nil, fmt.Errorf("incorrect hash algorithm: %v", err)
@@ -717,7 +719,7 @@ func signRSA(rw io.ReadWriter, key tpmutil.Handle, digest []byte, opts crypto.Si
 		scheme.Alg = tpm2.AlgRSAPSS
 	}
 
-	sig, err := tpm2.Sign(rw, key, "", digest, nil, scheme)
+	sig, err := tpm2.Sign(rw, key, password, digest, nil, scheme)
 	if err != nil {
 		return nil, fmt.Errorf("cannot sign: %v", err)
 	}

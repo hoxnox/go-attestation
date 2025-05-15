@@ -163,7 +163,7 @@ var (
 	// fields are populated depending on the key creation options.
 	ecdsaKeyTemplate = tpm2.Public{
 		Type:       tpm2.AlgECC,
-		Attributes: tpm2.FlagSignerDefault ^ tpm2.FlagRestricted,
+		Attributes: tpm2.FlagSignerDefault,
 		ECCParameters: &tpm2.ECCParams{
 			Sign: &tpm2.SigScheme{
 				Alg: tpm2.AlgECDSA,
@@ -175,7 +175,7 @@ var (
 	rsaKeyTemplate = tpm2.Public{
 		Type:          tpm2.AlgRSA,
 		NameAlg:       tpm2.AlgSHA256,
-		Attributes:    tpm2.FlagSignerDefault ^ tpm2.FlagRestricted,
+		Attributes:    (tpm2.FlagSignerDefault | tpm2.FlagDecrypt) ^ tpm2.FlagRestricted,
 		RSAParameters: &tpm2.RSAParams{},
 	}
 )

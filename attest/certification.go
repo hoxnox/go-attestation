@@ -22,11 +22,10 @@ import (
 	"crypto/rsa"
 	"errors"
 	"fmt"
-	"io"
-
 	"github.com/google/go-tpm/legacy/tpm2"
 	"github.com/google/go-tpm/legacy/tpm2/credactivation"
 	"github.com/google/go-tpm/tpmutil"
+	"io"
 )
 
 // secureCurves represents a set of secure elliptic curves. For now,
@@ -87,6 +86,7 @@ type ActivateOpts struct {
 type CertifyOpts struct {
 	// QualifyingData is the user provided qualifying data.
 	QualifyingData []byte
+	ObjAuth        string
 }
 
 // NewActivateOpts creates options for use in generating an activation challenge for a certified key.
@@ -249,7 +249,7 @@ func (p *CertificationParameters) Generate(rnd io.Reader, verifyOpts VerifyOpts,
 
 // certify uses AK's handle, the passed user qualifying data, and the passed
 // signature scheme to certify the key with the `hnd` handle.
-func certify(tpm io.ReadWriteCloser, hnd, akHnd tpmutil.Handle, qualifyingData []byte, scheme tpm2.SigScheme) (*CertificationParameters, error) {
+func certify(tpm io.ReadWriteCloser, hnd, akHnd tpmutil.Handle, qualifyingData []byte, scheme tpm2.SigScheme, objauth string) (*CertificationParameters, error) {
 	pub, _, _, err := tpm2.ReadPublic(tpm, hnd)
 	if err != nil {
 		return nil, fmt.Errorf("tpm2.ReadPublic() failed: %v", err)
@@ -258,7 +258,7 @@ func certify(tpm io.ReadWriteCloser, hnd, akHnd tpmutil.Handle, qualifyingData [
 	if err != nil {
 		return nil, fmt.Errorf("could not encode public key: %v", err)
 	}
-	att, sig, err := tpm2.CertifyEx(tpm, "", "", hnd, akHnd, qualifyingData, scheme)
+	att, sig, err := tpm2.CertifyEx(tpm, objauth, "", hnd, akHnd, qualifyingData, scheme)
 	if err != nil {
 		return nil, fmt.Errorf("tpm2.Certify() failed: %v", err)
 	}
